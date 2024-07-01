@@ -85,6 +85,7 @@
         let sensitivity = 10;
         let color = '#00ffff';
         let showFourier = false;
+        let time = 0;
 
         function resizeCanvas() {
             canvas.width = window.innerWidth;
@@ -133,8 +134,8 @@
             for (let i = 0; i < 360; i++) {
                 const angle = (i * Math.PI) / 180;
                 const value = (audioData[i] / 255) * sensitivity;
-                const x = centerX + (radius + value * 20) * Math.cos(angle);
-                const y = centerY + (radius + value * 20) * Math.sin(angle);
+                const x = centerX + (radius + value * 50) * Math.cos(angle);
+                const y = centerY + (radius + value * 50) * Math.sin(angle);
 
                 if (i === 0) {
                     ctx.moveTo(x, y);
@@ -166,24 +167,22 @@
             const dataArray = new Uint8Array(bufferLength);
             analyser.getByteFrequencyData(dataArray);
 
-            const barWidth = fourierCanvas.width / bufferLength;
-            let x = 0;
-
-            fourierCtx.fillStyle = color;
-            for (let i = 0; i < bufferLength; i++) {
-                const barHeight = (dataArray[i] / 255) * fourierCanvas.height;
-                fourierCtx.fillRect(x, fourierCanvas.height - barHeight, barWidth, barHeight);
-                x += barWidth + 1;
-            }
-
             // Draw component sinusoidal functions
             const numSines = 5;
-            const sineHeight = fourierCanvas.height / (numSines + 1);
+            const sineHeight = fourierCanvas.height / (numSines + 2);
+            let combinedWave = new Array(fourierCanvas.width).fill(0);
+
             for (let i = 0; i < numSines; i++) {
                 fourierCtx.beginPath();
                 fourierCtx.strokeStyle = `rgba(0, 255, 255, ${1 - i * 0.2})`;
+                const frequency = (i + 1) * 2;
+                const amplitude = (dataArray[i * 20] / 255) * sineHeight * 0.4;
+
                 for (let x = 0; x < fourierCanvas.width; x++) {
-                    const y = sineHeight * (i + 1) + Math.sin(x * 0.01 + i * 0.5) * sineHeight * 0.4;
+                    const t = x / fourierCanvas.width;
+                    const y = sineHeight * (i + 1) + Math.sin((t + time) * frequency * Math.PI * 2) * amplitude;
+                    combinedWave[x] += y - sineHeight * (i + 1);
+
                     if (x === 0) {
                         fourierCtx.moveTo(x, y);
                     } else {
@@ -192,6 +191,23 @@
                 }
                 fourierCtx.stroke();
             }
+
+            // Draw combined wave
+            fourierCtx.beginPath();
+            fourierCtx.strokeStyle = color;
+            fourierCtx.lineWidth = 2;
+
+            for (let x = 0; x < fourierCanvas.width; x++) {
+                const y = fourierCanvas.height - sineHeight + combinedWave[x];
+                if (x === 0) {
+                    fourierCtx.moveTo(x, y);
+                } else {
+                    fourierCtx.lineTo(x, y);
+                }
+            }
+            fourierCtx.stroke();
+
+            time += 0.01;
         }
 
         audioInput.addEventListener('change', (e) => {
