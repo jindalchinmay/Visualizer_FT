@@ -46,11 +46,11 @@
             height: 0;
             background-color: rgba(0, 0, 0, 0.8);
             transition: height 0.3s ease;
-            overflow: hidden;
+            overflow-y: auto;
         }
         #fourierCanvas {
             width: 100%;
-            height: 100%;
+            height: 200%;
         }
     </style>
 </head>
@@ -91,7 +91,7 @@
             canvas.width = window.innerWidth;
             canvas.height = window.innerHeight;
             fourierCanvas.width = window.innerWidth;
-            fourierCanvas.height = window.innerHeight / 2;
+            fourierCanvas.height = window.innerHeight;
         }
 
         resizeCanvas();
@@ -192,13 +192,14 @@
                 fourierCtx.stroke();
             }
 
-            // Draw combined wave
+            // Draw combined wave (actual song representation)
             fourierCtx.beginPath();
             fourierCtx.strokeStyle = color;
             fourierCtx.lineWidth = 2;
 
             for (let x = 0; x < fourierCanvas.width; x++) {
-                const y = fourierCanvas.height - sineHeight + combinedWave[x];
+                const index = Math.floor(x * bufferLength / fourierCanvas.width);
+                const y = fourierCanvas.height - (dataArray[index] / 255) * sineHeight * 2;
                 if (x === 0) {
                     fourierCtx.moveTo(x, y);
                 } else {
