@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Audio Visualizer</title>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #000;
+            color: #0ff;
+            font-family: Arial, sans-serif;
+        }
+        canvas {
+            display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+        #controls {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 10;
+            display: flex;
+            gap: 10px;
+        }
+        button, input {
+            background-color: rgba(0, 255, 255, 0.2);
+            border: 1px solid rgba(0, 255, 255, 0.5);
+            color: #0ff;
+            padding: 5px 10px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="visualizer"></canvas>
+    <div id="controls">
+        <input type="file" id="audioInput" accept="audio/*">
+        <button id="playPause" disabled>Play</button>
+        <input type="range" id="sensitivity" min="1" max="20" value="10">
+        <input type="color" id="colorPicker" value="#00ffff">
+    </div>
+
+    <script>
+        const canvas = document.getElementById('visualizer');
+        const ctx = canvas.getContext('2d');
+        const audioInput = document.getElementById('audioInput');
+        const playPauseButton = document.getElementById('playPause');
+        const sensitivitySlider = document.getElementById('sensitivity');
+        const colorPicker = document.getElementById('colorPicker');
+
+        let audioContext, analyser, source;
+        let isPlaying = false;
+        let audioData = new Uint8Array(360);
+        let sensitivity = 10;
+        let color = '#00ffff';
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        function initAudio(audioElement) {
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            analyser = audioContext.createAnalyser();
+            source = audioContext.createMediaElementSource(audioElement);
+            source.connect(analyser);
+            analyser.connect(audioContext.destination);
+            analyser.fftSize = 1024;
+        }
+
+        function updateAudioData() {
+            if (!analyser) return;
+            const bufferLength = analyser.frequencyBinCount;
+            const dataArray = new Uint8Array(bufferLength);
+            analyser.getByteFrequencyData(dataArray);
+            for (let i = 0; i < 360; i++) {
+                const index = Math.floor(i * bufferLength / 360);
+                audioData[i] = dataArray[index];
+            }
+            requestAnimationFrame(updateAudioData);
+        }
+
+        function draw() {
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            const radius = Math.min(canvas.width, canvas.height) / 3;
+            const lineWidth = 2;
+
+            ctx.beginPath();
+            ctx.strokeStyle = color;
+            ctx.lineWidth = lineWidth;
+
+            for (let i = 0; i < 360; i++) {
+                const angle = (i * Math.PI) / 180;
+                const value = (audioData[i] / 255) * sensitivity;
+                const x = centerX + (radius + value * 20) * Math.cos(angle);
+                const y = centerY + (radius + value * 20) * Math.sin(angle);
+
+                if (i === 0) {
+                    ctx.moveTo(x, y);
+                } else {
+                    ctx.lineTo(x, y);
+                }
+            }
+
+            ctx.closePath();
+            ctx.stroke();
+
+            ctx.shadowBlur = 20;
+            ctx.shadowColor = color;
+            ctx.stroke();
+
+            ctx.shadowBlur = 0;
+
+            requestAnimationFrame(draw);
+        }
+
+        audioInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                const audioElement = new Audio(URL.createObjectURL(file));
+                audioElement.addEventListener('canplaythrough', () => {
+                    initAudio(audioElement);
+                    playPauseButton.disabled = false;
+                    playPauseButton.textContent = 'Play';
+                    isPlaying = false;
+                    updateAudioData();
+                });
+                audioElement.addEventListener('error', (error) => {
+                    console.error('Error loading audio file:', error);
+                    alert('Error loading audio file. Please try another file.');
+                });
+
+                playPauseButton.onclick = () => {
+                    if (isPlaying) {
+                        audioElement.pause();
+                        playPauseButton.textContent = 'Play';
+                    } else {
+                        audioElement.play().then(() => {
+                            playPauseButton.textContent = 'Pause';
+                        }).catch(error => {
+                            console.error('Playback failed:', error);
+                            alert('Playback failed. Please try again.');
+                        });
+                    }
+                    isPlaying = !isPlaying;
+                };
+            }
+        });
+
+        sensitivitySlider.addEventListener('input', (e) => {
+            sensitivity = parseInt(e.target.value);
+        });
+
+        colorPicker.addEventListener('input', (e) => {
+            color = e.target.value;
+        });
+
+        draw();
+    </script>
+</body>
+</html>

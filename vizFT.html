@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Enhanced Audio Visualizer</title>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #000;
+            color: #0ff;
+            font-family: Arial, sans-serif;
+        }
+        canvas {
+            display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+        #controls {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 10;
+            display: flex;
+            gap: 10px;
+            transition: bottom 0.3s ease;
+        }
+        button, input {
+            background-color: rgba(0, 255, 255, 0.2);
+            border: 1px solid rgba(0, 255, 255, 0.5);
+            color: #0ff;
+            padding: 5px 10px;
+            cursor: pointer;
+        }
+        #fourierContainer {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 0;
+            background-color: rgba(0, 0, 0, 0.8);
+            transition: height 0.3s ease;
+            overflow: hidden;
+        }
+        #fourierCanvas {
+            width: 100%;
+            height: 100%;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="visualizer"></canvas>
+    <div id="fourierContainer">
+        <canvas id="fourierCanvas"></canvas>
+    </div>
+    <div id="controls">
+        <input type="file" id="audioInput" accept="audio/*">
+        <button id="playPause" disabled>Play</button>
+        <input type="range" id="sensitivity" min="1" max="20" value="10">
+        <input type="color" id="colorPicker" value="#00ffff">
+        <button id="toggleFourier">Show Fourier</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('visualizer');
+        const ctx = canvas.getContext('2d');
+        const audioInput = document.getElementById('audioInput');
+        const playPauseButton = document.getElementById('playPause');
+        const sensitivitySlider = document.getElementById('sensitivity');
+        const colorPicker = document.getElementById('colorPicker');
+        const toggleFourierButton = document.getElementById('toggleFourier');
+        const fourierContainer = document.getElementById('fourierContainer');
+        const fourierCanvas = document.getElementById('fourierCanvas');
+        const fourierCtx = fourierCanvas.getContext('2d');
+
+        let audioContext, analyser, source;
+        let isPlaying = false;
+        let audioData = new Uint8Array(360);
+        let sensitivity = 10;
+        let color = '#00ffff';
+        let showFourier = false;
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            fourierCanvas.width = window.innerWidth;
+            fourierCanvas.height = window.innerHeight / 2;
+        }
+
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        function initAudio(audioElement) {
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            analyser = audioContext.createAnalyser();
+            source = audioContext.createMediaElementSource(audioElement);
+            source.connect(analyser);
+            analyser.connect(audioContext.destination);
+            analyser.fftSize = 2048;
+        }
+
+        function updateAudioData() {
+            if (!analyser) return;
+            const bufferLength = analyser.frequencyBinCount;
+            const dataArray = new Uint8Array(bufferLength);
+            analyser.getByteFrequencyData(dataArray);
+            for (let i = 0; i < 360; i++) {
+                const index = Math.floor(i * bufferLength / 360);
+                audioData[i] = dataArray[index];
+            }
+            requestAnimationFrame(updateAudioData);
+        }
+
+        function draw() {
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            const radius = Math.min(canvas.width, canvas.height) / 3;
+            const lineWidth = 2;
+
+            ctx.beginPath();
+            ctx.strokeStyle = color;
+            ctx.lineWidth = lineWidth;
+
+            for (let i = 0; i < 360; i++) {
+                const angle = (i * Math.PI) / 180;
+                const value = (audioData[i] / 255) * sensitivity;
+                const x = centerX + (radius + value * 20) * Math.cos(angle);
+                const y = centerY + (radius + value * 20) * Math.sin(angle);
+
+                if (i === 0) {
+                    ctx.moveTo(x, y);
+                } else {
+                    ctx.lineTo(x, y);
+                }
+            }
+
+            ctx.closePath();
+            ctx.stroke();
+
+            ctx.shadowBlur = 20;
+            ctx.shadowColor = color;
+            ctx.stroke();
+
+            ctx.shadowBlur = 0;
+
+            if (showFourier) {
+                drawFourier();
+            }
+
+            requestAnimationFrame(draw);
+        }
+
+        function drawFourier() {
+            fourierCtx.clearRect(0, 0, fourierCanvas.width, fourierCanvas.height);
+            
+            const bufferLength = analyser.frequencyBinCount;
+            const dataArray = new Uint8Array(bufferLength);
+            analyser.getByteFrequencyData(dataArray);
+
+            const barWidth = fourierCanvas.width / bufferLength;
+            let x = 0;
+
+            fourierCtx.fillStyle = color;
+            for (let i = 0; i < bufferLength; i++) {
+                const barHeight = (dataArray[i] / 255) * fourierCanvas.height;
+                fourierCtx.fillRect(x, fourierCanvas.height - barHeight, barWidth, barHeight);
+                x += barWidth + 1;
+            }
+
+            // Draw component sinusoidal functions
+            const numSines = 5;
+            const sineHeight = fourierCanvas.height / (numSines + 1);
+            for (let i = 0; i < numSines; i++) {
+                fourierCtx.beginPath();
+                fourierCtx.strokeStyle = `rgba(0, 255, 255, ${1 - i * 0.2})`;
+                for (let x = 0; x < fourierCanvas.width; x++) {
+                    const y = sineHeight * (i + 1) + Math.sin(x * 0.01 + i * 0.5) * sineHeight * 0.4;
+                    if (x === 0) {
+                        fourierCtx.moveTo(x, y);
+                    } else {
+                        fourierCtx.lineTo(x, y);
+                    }
+                }
+                fourierCtx.stroke();
+            }
+        }
+
+        audioInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                const audioElement = new Audio(URL.createObjectURL(file));
+                audioElement.addEventListener('canplaythrough', () => {
+                    initAudio(audioElement);
+                    playPauseButton.disabled = false;
+                    playPauseButton.textContent = 'Play';
+                    isPlaying = false;
+                    updateAudioData();
+                });
+                audioElement.addEventListener('error', (error) => {
+                    console.error('Error loading audio file:', error);
+                    alert('Error loading audio file. Please try another file.');
+                });
+
+                playPauseButton.onclick = () => {
+                    if (isPlaying) {
+                        audioElement.pause();
+                        playPauseButton.textContent = 'Play';
+                    } else {
+                        audioElement.play().then(() => {
+                            playPauseButton.textContent = 'Pause';
+                        }).catch(error => {
+                            console.error('Playback failed:', error);
+                            alert('Playback failed. Please try again.');
+                        });
+                    }
+                    isPlaying = !isPlaying;
+                };
+            }
+        });
+
+        sensitivitySlider.addEventListener('input', (e) => {
+            sensitivity = parseInt(e.target.value);
+        });
+
+        colorPicker.addEventListener('input', (e) => {
+            color = e.target.value;
+        });
+
+        toggleFourierButton.addEventListener('click', () => {
+            showFourier = !showFourier;
+            if (showFourier) {
+                fourierContainer.style.height = '50%';
+                document.getElementById('controls').style.bottom = '52%';
+                toggleFourierButton.textContent = 'Hide Fourier';
+            } else {
+                fourierContainer.style.height = '0';
+                document.getElementById('controls').style.bottom = '20px';
+                toggleFourierButton.textContent = 'Show Fourier';
+            }
+        });
+
+        draw();
+    </script>
+</body>
+</html>
