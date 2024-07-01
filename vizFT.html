@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Enhanced Audio Visualizer</title>
+    <title>Enhanced Circular Audio Visualizer</title>
     <style>
         body, html {
             margin: 0;
@@ -68,25 +68,29 @@
     </div>
 
     <script>
+        // Grab our canvases and contexts
         const canvas = document.getElementById('visualizer');
         const ctx = canvas.getContext('2d');
+        const fourierCanvas = document.getElementById('fourierCanvas');
+        const fourierCtx = fourierCanvas.getContext('2d');
+
+        // Set up our controls
         const audioInput = document.getElementById('audioInput');
         const playPauseButton = document.getElementById('playPause');
         const sensitivitySlider = document.getElementById('sensitivity');
         const colorPicker = document.getElementById('colorPicker');
         const toggleFourierButton = document.getElementById('toggleFourier');
         const fourierContainer = document.getElementById('fourierContainer');
-        const fourierCanvas = document.getElementById('fourierCanvas');
-        const fourierCtx = fourierCanvas.getContext('2d');
 
+        // Some global variables we'll need
         let audioContext, analyser, source;
         let isPlaying = false;
-        let audioData = new Uint8Array(360);
         let sensitivity = 10;
         let color = '#00ffff';
         let showFourier = false;
         let time = 0;
 
+        // Make sure our canvas fits the screen
         function resizeCanvas() {
             canvas.width = window.innerWidth;
             canvas.height = window.innerHeight;
@@ -97,6 +101,7 @@
         resizeCanvas();
         window.addEventListener('resize', resizeCanvas);
 
+        // Set up our audio context and analyser
         function initAudio(audioElement) {
             audioContext = new (window.AudioContext || window.webkitAudioContext)();
             analyser = audioContext.createAnalyser();
@@ -106,83 +111,93 @@
             analyser.fftSize = 2048;
         }
 
-        function updateAudioData() {
-            if (!analyser) return;
+        // The main draw loop
+        function draw() {
+            // Clear the canvas
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        const centerX = canvas.width / 2;
+        const centerY = canvas.height / 2;
+        const radius = Math.min(canvas.width, canvas.height) / 3;
+
+        ctx.beginPath();
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2;
+
+        if (analyser) {
             const bufferLength = analyser.frequencyBinCount;
             const dataArray = new Uint8Array(bufferLength);
             analyser.getByteFrequencyData(dataArray);
-            for (let i = 0; i < 360; i++) {
-                const index = Math.floor(i * bufferLength / 360);
-                audioData[i] = dataArray[index];
-            }
-            requestAnimationFrame(updateAudioData);
-        }
-
-        function draw() {
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-            const centerX = canvas.width / 2;
-            const centerY = canvas.height / 2;
-            const radius = Math.min(canvas.width, canvas.height) / 3;
-            const lineWidth = 2;
-
-            ctx.beginPath();
-            ctx.strokeStyle = color;
-            ctx.lineWidth = lineWidth;
 
             for (let i = 0; i < 360; i++) {
                 const angle = (i * Math.PI) / 180;
-                const value = (audioData[i] / 255) * sensitivity;
-                const x = centerX + (radius + value * 50) * Math.cos(angle);
-                const y = centerY + (radius + value * 50) * Math.sin(angle);
+                const value = (dataArray[i] / 255) * sensitivity * 0.1;
+                const x = centerX + (radius + value * radius * 0.5) * Math.cos(angle);
+                const y = centerY + (radius + value * radius * 0.5) * Math.sin(angle);
 
-                if (i === 0) {
-                    ctx.moveTo(x, y);
-                } else {
-                    ctx.lineTo(x, y);
-                }
+                if (i === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
             }
-
-            ctx.closePath();
-            ctx.stroke();
-
-            ctx.shadowBlur = 20;
-            ctx.shadowColor = color;
-            ctx.stroke();
-
-            ctx.shadowBlur = 0;
-
-            if (showFourier) {
-                drawFourier();
-            }
-
-            requestAnimationFrame(draw);
+        } else {
+            ctx.arc(centerX, centerY, radius, 0, 2 * Math.PI);
         }
 
+        ctx.closePath();
+        ctx.stroke();
+
+        // Make it glow
+        ctx.shadowBlur = 20;
+        ctx.shadowColor = color;
+        ctx.stroke();
+
+        ctx.shadowBlur = 0;
+
+        if (showFourier) drawFourier();
+
+        requestAnimationFrame(draw);
+        }
+
+        // Draw our Fourier analysis
         function drawFourier() {
             fourierCtx.clearRect(0, 0, fourierCanvas.width, fourierCanvas.height);
             
-            const bufferLength = analyser.frequencyBinCount;
-            const dataArray = new Uint8Array(bufferLength);
-            analyser.getByteFrequencyData(dataArray);
+            if (analyser) {
+                const bufferLength = analyser.frequencyBinCount;
+                const dataArray = new Uint8Array(bufferLength);
+                analyser.getByteFrequencyData(dataArray);
 
-            // draw component sinusoidal functions
-            const numSines = 5;
-            const sineHeight = fourierCanvas.height / (numSines + 2);
-            let combinedWave = new Array(fourierCanvas.width).fill(0);
+                // Draw our component sine waves
+                const numSines = 5;
+                const sineHeight = fourierCanvas.height / (numSines + 2);
 
-            for (let i = 0; i < numSines; i++) {
+                for (let i = 0; i < numSines; i++) {
+                    fourierCtx.beginPath();
+                    fourierCtx.strokeStyle = `rgba(0, 255, 255, ${1 - i * 0.2})`;
+                    const frequency = (i + 1) * 2;
+                    const amplitude = (dataArray[i * 20] / 255) * sineHeight * 0.4;
+
+                    for (let x = 0; x < fourierCanvas.width; x++) {
+                        const t = x / fourierCanvas.width;
+                        const y = sineHeight * (i + 1) + Math.sin((t + time) * frequency * Math.PI * 2) * amplitude;
+
+                        if (x === 0) {
+                            fourierCtx.moveTo(x, y);
+                        } else {
+                            fourierCtx.lineTo(x, y);
+                        }
+                    }
+                    fourierCtx.stroke();
+                }
+
+                // Draw the combined wave (actual song representation)
                 fourierCtx.beginPath();
-                fourierCtx.strokeStyle = `rgba(0, 255, 255, ${1 - i * 0.2})`;
-                const frequency = (i + 1) * 2;
-                const amplitude = (dataArray[i * 20] / 255) * sineHeight * 0.4;
+                fourierCtx.strokeStyle = color;
+                fourierCtx.lineWidth = 2;
 
                 for (let x = 0; x < fourierCanvas.width; x++) {
-                    const t = x / fourierCanvas.width;
-                    const y = sineHeight * (i + 1) + Math.sin((t + time) * frequency * Math.PI * 2) * amplitude;
-                    combinedWave[x] += y - sineHeight * (i + 1);
-
+                    const index = Math.floor(x * bufferLength / fourierCanvas.width);
+                    const y = fourierCanvas.height - (dataArray[index] / 255) * sineHeight * 2;
                     if (x === 0) {
                         fourierCtx.moveTo(x, y);
                     } else {
@@ -190,27 +205,12 @@
                     }
                 }
                 fourierCtx.stroke();
+
+                time += 0.01;
             }
-
-            // draw combined wave (the real song representation)
-            fourierCtx.beginPath();
-            fourierCtx.strokeStyle = color;
-            fourierCtx.lineWidth = 2;
-
-            for (let x = 0; x < fourierCanvas.width; x++) {
-                const index = Math.floor(x * bufferLength / fourierCanvas.width);
-                const y = fourierCanvas.height - (dataArray[index] / 255) * sineHeight * 2;
-                if (x === 0) {
-                    fourierCtx.moveTo(x, y);
-                } else {
-                    fourierCtx.lineTo(x, y);
-                }
-            }
-            fourierCtx.stroke();
-
-            time += 0.01;
         }
 
+        // Handle file uploads
         audioInput.addEventListener('change', (e) => {
             const file = e.target.files[0];
             if (file) {
@@ -220,7 +220,6 @@
                     playPauseButton.disabled = false;
                     playPauseButton.textContent = 'Play';
                     isPlaying = false;
-                    updateAudioData();
                 });
                 audioElement.addEventListener('error', (error) => {
                     console.error('Error loading audio file:', error);
@@ -244,14 +243,17 @@
             }
         });
 
+        // Update sensitivity when slider moves
         sensitivitySlider.addEventListener('input', (e) => {
             sensitivity = parseInt(e.target.value);
         });
 
+        // Update color when picker changes
         colorPicker.addEventListener('input', (e) => {
             color = e.target.value;
         });
 
+        // Toggle Fourier view
         toggleFourierButton.addEventListener('click', () => {
             showFourier = !showFourier;
             if (showFourier) {
@@ -265,6 +267,7 @@
             }
         });
 
+        // Kick off our drawing loop
         draw();
     </script>
 </body>
