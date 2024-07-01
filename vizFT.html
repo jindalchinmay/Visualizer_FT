@@ -167,7 +167,7 @@
             const dataArray = new Uint8Array(bufferLength);
             analyser.getByteFrequencyData(dataArray);
 
-            // Draw component sinusoidal functions
+            // draw component sinusoidal functions
             const numSines = 5;
             const sineHeight = fourierCanvas.height / (numSines + 2);
             let combinedWave = new Array(fourierCanvas.width).fill(0);
@@ -192,7 +192,7 @@
                 fourierCtx.stroke();
             }
 
-            // Draw combined wave (actual song representation)
+            // draw combined wave (the real song representation)
             fourierCtx.beginPath();
             fourierCtx.strokeStyle = color;
             fourierCtx.lineWidth = 2;
